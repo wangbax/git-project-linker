@@ -63,6 +63,10 @@ function jsSentry() {
     });
 }
 
+function jsGitHubAssigneeFetchPatch() {
+  return src("./src/js/github-assignee-fetch-patch.js").pipe(dest("dist"));
+}
+
 function html() {
   return src("./src/html/*.html").pipe(dest("dist"));
 }
@@ -87,6 +91,7 @@ function manifest() {
 if (isProd) {
   exports.build = series(
     jsOptions,
+    jsGitHubAssigneeFetchPatch,
     jsIndex,
     jsSentry,
     jsBackground,
@@ -95,9 +100,10 @@ if (isProd) {
     manifest
   );
 } else {
-  watch("./src/**/*", series(jsOptions, jsIndex, jsSentry, jsBackground, html));
+  watch("./src/**/*", series(jsOptions, jsGitHubAssigneeFetchPatch, jsIndex, jsSentry, jsBackground, html));
   exports.dev = series(
     jsOptions,
+    jsGitHubAssigneeFetchPatch,
     jsIndex,
     jsSentry,
     jsBackground,

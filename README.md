@@ -101,6 +101,7 @@ npm run build
   - 支持大小写，如 `XX` 可匹配 `#XX-6616715346`
 - **GitHub 用户映射目录**：可选，填写 GitHub 目录仓库地址（如：`https://github.com/[org]/org`）
   - 插件会读取 README 中 `GitHub / Name / Email` 表格，优先使用 `Name` 列，并在 GitHub 原生 hovercard 名称区域追加如 `([中文名])` 的显示
+  - GitHub Issue/PR assignees 搜索框也支持输入映射表中的 `Name`、中文名拼音或邮箱前缀，并在候选结果中补充展示映射信息；通过映射追加的候选会复用 GitHub 原生选择与保存流程
 
 ### Sentry 配置（可选）
 - **Sentry 域名地址**：你的 Sentry 域名（如：`sentry.com`），支持多个，用逗号分隔
