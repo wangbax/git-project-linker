@@ -2076,7 +2076,7 @@ pinkie@^2.0.0:
 
 pinyin-pro@^3.28.1:
   version "3.28.1"
-  resolved "https://nexus.tapsvc.com/repository/npm-taptap/pinyin-pro/-/pinyin-pro-3.28.1.tgz#dbc54ee79ab2d3025722322712f2be5b65444707"
+  resolved "https://registry.npmjs.org/pinyin-pro/-/pinyin-pro-3.28.1.tgz#dbc54ee79ab2d3025722322712f2be5b65444707"
   integrity sha512-oqz8ulwRgtUXRi0vbqEfGNly19zpyCxYrjhkk5TibGcgSW6eNwS5woajCXRwqURi8Ehc2yOFTiB4uNoZ+NJOnA==
 
 posix-character-classes@^0.1.0:
