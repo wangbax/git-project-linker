@@ -740,7 +740,7 @@ async function main() {
     }
 
     return node.matches(
-      '.github-lark-id, .lark-project-link, .github-user-real-name, .lark-popover'
+      '.github-lark-id, .lark-project-link, .github-user-real-name, .github-assignee-alias, .lark-popover'
     );
   }
 
