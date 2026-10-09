@@ -288,7 +288,7 @@ async function getLarkProjectInfo({ tid, app }) {
   let url = `${LARK_DOMAIN_HOST}/${validApp}/${type}/detail/${id}`;
   const res = await fetch(url);
   const text = await res.text();
-  let info = { tid, actualType: type };
+  let info = { tid, app: validApp, actualType: type };
   const detailInfo = getLarkProjectInfoByDetail(text, type, id);
   if (detailInfo.data) {
     info = {

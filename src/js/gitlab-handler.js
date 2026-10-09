@@ -19,7 +19,10 @@ export function createGitLabHandler(context) {
   /**
    * 初始化 GitLab 处理器
    */
-  function init() {
+  async function init() {
+    const config = await getLarkConfig();
+    if (config?.lark?.enabled !== true) return;
+
     // 隐藏 GitLab 的默认 tooltip
     hideGitLabTooltips();
     

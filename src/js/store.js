@@ -1,26 +1,173 @@
 // 配置存储 key
 const GITLAB_LINK_TO_LARK = "GITLAB_LINK_TO_LARK";
+const CONFIG_SCHEMA_VERSION = 2;
 
 // 缓存配置
 let _GITLAB_LINK_TO_LARK_OPTIONS = null;
 
 export const isDev = process.env.isDev === "1";
 
+function splitConfigList(value) {
+  if (Array.isArray(value)) {
+    return value.map(item => String(item || "").trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function uniqueConfigList(value) {
+  return Array.from(new Set(splitConfigList(value)));
+}
+
+function normalizeGitHubDirectoryUrl(rawUrl) {
+  if (!rawUrl) return "";
+
+  try {
+    const url = new URL(String(rawUrl).trim());
+    if (url.protocol !== "https:" || url.hostname !== "github.com") return "";
+
+    const pathSegments = url.pathname.split("/").filter(Boolean);
+    if (pathSegments.length < 2) return "";
+
+    return `${url.origin}/${pathSegments[0]}/${pathSegments[1]}`;
+  } catch (error) {
+    return "";
+  }
+}
+
+function getGitHubOrganizationFromDirectoryUrl(directoryUrl) {
+  try {
+    const url = new URL(directoryUrl);
+    const pathSegments = url.pathname.split("/").filter(Boolean);
+    return pathSegments[0] || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function normalizeOrganizations(value) {
+  if (!Array.isArray(value)) return [];
+
+  const organizations = [];
+  const seenLogins = new Set();
+
+  value.forEach(item => {
+    const directoryUrl = normalizeGitHubDirectoryUrl(item?.directoryUrl);
+    const login = getGitHubOrganizationFromDirectoryUrl(directoryUrl);
+    const normalizedLogin = login.toLowerCase();
+
+    if (!login || !directoryUrl || seenLogins.has(normalizedLogin)) return;
+
+    seenLogins.add(normalizedLogin);
+    organizations.push({
+      login,
+      directoryUrl,
+      enabled: item?.enabled !== false,
+    });
+  });
+
+  return organizations;
+}
+
+function buildLegacyOrganization(rawConfig) {
+  const directoryUrl = normalizeGitHubDirectoryUrl(rawConfig?.githubUserDirectoryUrl);
+  if (!directoryUrl) return [];
+
+  return [{
+    login: getGitHubOrganizationFromDirectoryUrl(directoryUrl),
+    directoryUrl,
+    enabled: true,
+  }];
+}
+
+/**
+ * 将旧版扁平配置迁移为 schema 2，同时保留旧字段供现有模块过渡读取。
+ */
+export function normalizeConfig(rawConfig = {}) {
+  const raw = rawConfig || {};
+  const legacyNamespaces = uniqueConfigList(raw.app);
+  const legacyDomains = uniqueConfigList(raw.domain);
+  const legacyPrefixes = uniqueConfigList(raw.prefixes || "m,f");
+  const lark = raw.lark || {};
+  const gitlab = raw.gitlab || {};
+  const sentry = raw.sentry || {};
+  const github = raw.github || {};
+
+  const namespaces = uniqueConfigList(lark.namespaces || legacyNamespaces);
+  const domains = uniqueConfigList(gitlab.domains || legacyDomains);
+  const prefixes = uniqueConfigList(lark.prefixes || legacyPrefixes);
+  const organizations = normalizeOrganizations(github.organizations);
+  const migratedOrganizations = organizations.length > 0
+    ? organizations
+    : buildLegacyOrganization(raw);
+  const sentryDomains = uniqueConfigList(sentry.domains || raw.sentryDomain);
+  const sentryIssueCreateUrl = String(
+    sentry.issueCreateUrl || raw.sentryIssueCreateUrl || ""
+  ).trim();
+
+  const larkEnabled = typeof lark.enabled === "boolean"
+    ? lark.enabled
+    : namespaces.length > 0;
+  const sentryEnabled = typeof sentry.enabled === "boolean"
+    ? sentry.enabled
+    : sentryDomains.length > 0 && Boolean(sentryIssueCreateUrl);
+  const gitlabEnabled = typeof gitlab.enabled === "boolean"
+    ? gitlab.enabled
+    : domains.length > 0;
+
+  return {
+    schemaVersion: CONFIG_SCHEMA_VERSION,
+    github: {
+      enabled: github.enabled !== false,
+      organizations: migratedOrganizations,
+    },
+    gitlab: {
+      enabled: gitlabEnabled,
+      domains,
+    },
+    lark: {
+      enabled: larkEnabled,
+      namespaces,
+      prefixes,
+    },
+    sentry: {
+      enabled: sentryEnabled,
+      domains: sentryDomains,
+      issueCreateUrl: sentryIssueCreateUrl,
+    },
+
+    // 兼容当前内容脚本和后台脚本，后续模块拆分完成后再移除。
+    app: namespaces.join(","),
+    domain: domains.join(","),
+    prefixes: prefixes.join(","),
+    githubUserDirectoryUrl: migratedOrganizations[0]?.directoryUrl || "",
+    sentryDomain: sentryDomains.join(","),
+    sentryIssueCreateUrl,
+  };
+}
+
 // 获取配置
 export const getLarkConfig = async () => {
   if (_GITLAB_LINK_TO_LARK_OPTIONS) return _GITLAB_LINK_TO_LARK_OPTIONS;
 
   if (isDev) {
-    _GITLAB_LINK_TO_LARK_OPTIONS = {
+    _GITLAB_LINK_TO_LARK_OPTIONS = normalizeConfig({
       app: process.env.app,
       domain: process.env.domain,
-    };
+    });
     return _GITLAB_LINK_TO_LARK_OPTIONS;
   }
 
   const resp = await chrome.storage.sync.get(GITLAB_LINK_TO_LARK);
   if (resp && resp[GITLAB_LINK_TO_LARK]) {
-    _GITLAB_LINK_TO_LARK_OPTIONS = JSON.parse(resp[GITLAB_LINK_TO_LARK]);
+    _GITLAB_LINK_TO_LARK_OPTIONS = normalizeConfig(
+      JSON.parse(resp[GITLAB_LINK_TO_LARK])
+    );
+  } else {
+    _GITLAB_LINK_TO_LARK_OPTIONS = normalizeConfig();
   }
   return _GITLAB_LINK_TO_LARK_OPTIONS;
 };
@@ -31,7 +178,8 @@ export const getLarkConfigSync = () => {
 
 // 设置配置
 export const setLarkConfig = async (value) => {
-  const dataString = JSON.stringify(value);
+  _GITLAB_LINK_TO_LARK_OPTIONS = normalizeConfig(value);
+  const dataString = JSON.stringify(_GITLAB_LINK_TO_LARK_OPTIONS);
   if (isDev) return;
   await chrome.storage.sync.set({ [GITLAB_LINK_TO_LARK]: dataString });
 };

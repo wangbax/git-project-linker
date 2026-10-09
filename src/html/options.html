@@ -111,6 +111,23 @@
         opacity: 1;
         overflow: visible;
       }
+
+      .github-org-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .github-org-row {
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        background: #fafafa;
+      }
+
+      .github-org-row input[type="text"] {
+        background: transparent;
+      }
     </style>
   </head>
   <body>
@@ -120,128 +137,138 @@
       >
         <h1 class="text-2xl font-bold mb-8">配置</h1>
         <form id="form" novalidate>
-          <!-- 跳转配置 -->
+          <!-- GitHub 配置 -->
           <div class="mb-8">
-            <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="app"
-                  placeholder=" "
-                  required
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="app"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >飞书命名空间</label
-                >
-              </div>
-              <p class="text-xs text-gray-500">
-                支持多个命名空间，用逗号分隔，如：pojq34,app1,app2（插件会自动尝试找到有效的）
-              </p>
+            <div class="flex items-center justify-between border-b pb-2 mb-4">
+              <h2 class="text-lg font-semibold text-gray-700">GitHub 增强</h2>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                <input id="github-enabled" type="checkbox" checked />
+                启用
+              </label>
             </div>
-            <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="domain"
-                  placeholder=" "
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="domain"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >GitLab/GitHub 域名地址</label
-                >
-              </div>
-              <p class="text-xs text-gray-500">
-                输入 GitLab/GitHub 域名地址用于匹配激活插件，如 gitlab.com,github.com
-                (多个域名触发请用 , 作为分割)
-              </p>
-            </div>
-            <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="prefixes"
-                  placeholder=" "
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="prefixes"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >项目 ID 前缀</label
-                >
-              </div>
-              <p class="text-xs text-gray-500">
-                输入识别的项目 ID 前缀，多个用逗号分隔，如 XX,M,F (默认为 m,f，大小写不敏感)
-              </p>
-            </div>
-            <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="githubUserDirectoryUrl"
-                  placeholder=" "
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="githubUserDirectoryUrl"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >GitHub 用户映射目录</label
-                >
-              </div>
-              <p class="text-xs text-gray-500">
-                输入 GitHub 目录仓库地址，如 https://github.com/[org]/org 。插件会读取 README 中的 GitHub/Name/Email 表，优先使用 Name 列，并在 GitHub 原生 hovercard 名称区域追加中文名。
-              </p>
-            </div>
+            <p class="text-xs text-gray-500 mb-4">
+              按当前 GitHub 仓库所属 Org 加载对应的用户目录，可添加多个 Org。
+            </p>
+            <div id="github-orgs" class="github-org-list"></div>
+            <button
+              id="add-github-org"
+              type="button"
+              class="mt-4 px-4 py-2 text-sm text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
+            >
+              添加 GitHub Org
+            </button>
+            <div id="github-org-error" class="mt-3 text-sm text-red-600 hidden"></div>
           </div>
 
-          <!-- 其他配置（Sentry）-->
+          <!-- 更多设置 -->
           <div class="mb-8">
-            <div class="collapsible-header border-b pb-2 mb-4" id="sentry-config-header">
-              <h2 class="text-lg font-semibold text-gray-700">其他配置</h2>
-              <span class="collapsible-arrow collapsed" id="sentry-config-arrow">▼</span>
+            <div class="collapsible-header border-b pb-2 mb-4" id="more-settings-header">
+              <h2 class="text-lg font-semibold text-gray-700">更多设置</h2>
+              <span class="collapsible-arrow collapsed" id="more-settings-arrow">▼</span>
             </div>
-            <div class="collapsible-content" id="sentry-config-content">
-              <h3 class="text-sm font-medium text-gray-500 mb-3">Sentry 配置</h3>
+            <div class="collapsible-content" id="more-settings-content">
+              <h3 class="text-sm font-medium text-gray-500 mb-3">飞书关联</h3>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-600 mb-5">
+                <input id="lark-enabled" type="checkbox" />
+                启用飞书项目关联
+              </label>
               <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="sentryDomain"
-                  placeholder=" "
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="sentryDomain"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >Sentry 域名地址</label
-                >
+                <div>
+                  <input
+                    type="text"
+                    name="app"
+                    placeholder=" "
+                    class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                  />
+                  <label
+                    for="app"
+                    class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                    >飞书命名空间</label
+                  >
+                </div>
+                <p class="text-xs text-gray-500">
+                  多个命名空间用逗号分隔。飞书关联关闭时不会影响 GitHub 核心功能。
+                </p>
               </div>
-              <p class="text-xs text-gray-500">
-                输入 Sentry 域名地址用于匹配激活插件，如 sentry.com
-                (多个域名触发请用 , 作为分割)
-              </p>
-            </div>
-            <div class="relative z-0 w-full mb-5">
-              <div>
-                <input
-                  type="text"
-                  name="sentryIssueCreateUrl"
-                  placeholder=" "
-                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
-                />
-                <label
-                  for="sentryIssueCreateUrl"
-                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >Sentry Issue 创建地址</label
-                >
+              <div class="relative z-0 w-full mb-5">
+                <div>
+                  <input
+                    type="text"
+                    name="prefixes"
+                    placeholder=" "
+                    class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                  />
+                  <label
+                    for="prefixes"
+                    class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                    >项目编号前缀</label
+                  >
+                </div>
+                <p class="text-xs text-gray-500">
+                  仅用于飞书项目编号识别，如 XX、M、F。
+                </p>
               </div>
-              <p class="text-xs text-gray-500">
-                输入后端 API 地址，如 http://localhost:8080/api/feishu-sentry
-              </p>
+
+              <h3 class="text-sm font-medium text-gray-500 mb-3">GitLab</h3>
+              <div class="relative z-0 w-full mb-5">
+                <div>
+                  <input
+                    type="text"
+                    name="domain"
+                    placeholder=" "
+                    class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                  />
+                  <label
+                    for="domain"
+                    class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                    >GitLab 域名地址</label
+                  >
+                </div>
+                <p class="text-xs text-gray-500">
+                  多个域名用逗号分隔；GitHub 无需填写。
+                </p>
+              </div>
+
+              <h3 class="text-sm font-medium text-gray-500 mb-3">Sentry</h3>
+              <label class="inline-flex items-center gap-2 text-sm text-gray-600 mb-5">
+                <input id="sentry-enabled" type="checkbox" />
+                启用 Sentry 工单关联
+              </label>
+              <div class="relative z-0 w-full mb-5">
+                <div>
+                  <input
+                    type="text"
+                    name="sentryDomain"
+                    placeholder=" "
+                    class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                  />
+                  <label
+                    for="sentryDomain"
+                    class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                    >Sentry 域名地址</label
+                  >
+                </div>
+                <p class="text-xs text-gray-500">
+                  多个域名用逗号分隔。
+                </p>
+              </div>
+              <div class="relative z-0 w-full mb-5">
+                <div>
+                  <input
+                    type="text"
+                    name="sentryIssueCreateUrl"
+                    placeholder=" "
+                    class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                  />
+                  <label
+                    for="sentryIssueCreateUrl"
+                    class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                    >Sentry Issue 创建地址</label
+                  >
+                </div>
+                <p class="text-xs text-gray-500">
+                  例如：http://localhost:8080/api/feishu-sentry
+                </p>
               </div>
             </div>
           </div>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "version": "2.4.0",
-  "name": "Lark Project Linker",
-  "description": "连接 GitLab/GitHub/Sentry 与飞书项目。自动转换项目 ID 为可点击链接，支持智能类型识别和一键创建飞书工单",
+  "version": "2.5.0",
+  "name": "GitHub Linker",
+  "description": "增强 GitHub/GitLab 工作流，支持多 Org 用户映射和可选的飞书项目关联",
   "icons": {
     "16": "icon.png",
     "48": "icon.png",

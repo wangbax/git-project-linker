@@ -1,27 +1,25 @@
-# Lark Project Linker
+# GitHub Linker
 
-一个浏览器插件，连接 GitLab/GitHub/Sentry 与飞书项目。自动将项目 ID（如 `#XX-xxx`）转换为可点击的飞书链接，支持智能类型识别（Story/Issue）和一键创建飞书工单。让你的 DevOps 工作流更高效！
+一个以 GitHub 为主、兼容 GitLab 的浏览器增强插件。支持多 GitHub Org 用户映射、hovercard 中文名、assignee/reviewer 搜索增强，以及可选的飞书项目关联。
+
+产品方向和迁移方案见：[GitHub Linker 产品方向方案](./docs/product-direction.md)。
 
 [飞书参考资料](https://bytedance.larkoffice.com/wiki/XusFwYp2ZiqltkkSTaJc7eMdnYb)
 
 ## ✨ 主要功能
 
-### GitLab/GitHub 集成
-- 🔗 **自动转换链接**：将 GitLab/GitHub 中的 `#XX-xxx`、`#M-xxx`、`#F-xxx` 等格式自动转换为飞书链接
-- 🎯 **智能类型识别**：根据 commit 类型前缀自动判断是 Issue 还是 Story
-  - `fix:`、`bugfix:`、`hotfix:` → Issue
-  - `feat:`、`chore:`、`refactor:` → Story
-- 💡 **自定义 Tooltip**：显示 "Issue in Lark" 或 "Story in Lark"，替代原生的 tooltip
+### GitHub/GitLab 核心增强
 - 👤 **GitHub 用户 hovercard 补中文名**：可基于 GitHub 目录仓库 README 的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 名称区域补上中文名
 - 🚀 **实时监听**：自动检测页面变化、标签切换、URL 变化
 - ⚡ **性能优化**：防抖机制、智能缓存、避免重复处理
-- 🔄 **类型统一**：确保同一 tid 的所有链接类型一致
-- 🌐 **多平台支持**：同时支持 GitLab 和 GitHub
+- 👥 **多 Org 映射**：按当前 GitHub 仓库所属 Org 加载对应的用户目录
+- 🔎 **Assignee/Reviewer 搜索增强**：支持中文名、拼音和邮箱前缀搜索
+- 🌐 **多平台支持**：支持 GitHub 和 GitLab
 
-### Sentry 集成
-- 🎫 **快速创建工单**：在 Sentry Issue 页面一键创建飞书 Issue
-- 📝 **自动填充信息**：自动提取 Sentry Issue 标题、描述和 URL
-- 🔗 **智能按钮定位**：自动在 Issue Tracking 区域添加"创建飞书 Issue"按钮
+### 更多设置
+- 🔗 **可选飞书关联**：将项目编号转换为飞书项目链接
+- 🎯 **智能类型识别**：根据 commit 类型前缀判断 Issue 或 Story
+- 🧩 **Sentry 集成**：在 Sentry Issue 页面创建飞书工单，并自动填充标题、描述和 URL
 
 ## 功能预览
 
@@ -93,29 +91,24 @@ npm run build
 
 安装完成后，点击扩展图标或在扩展管理页面点击「选项」进行配置
 
-### GitLab/GitHub 配置
-- **飞书命名空间**：你的飞书项目空间名称，支持多个，用逗号分隔（如：`pojq34,app1,app2`）
-  - 插件会自动尝试每个命名空间，直到找到有效的那个
-- **域名地址**：用于匹配激活插件（如：`gitlab.com,github.com`），支持多个域名，用逗号分隔
-- **项目 ID 前缀**：项目中使用的项目 ID 前缀，多个用逗号分隔（如：`XX,M,F,XX`）
-  - 支持大小写，如 `XX` 可匹配 `#XX-6616715346`
-- **GitHub 用户映射目录**：可选，填写 GitHub 目录仓库地址（如：`https://github.com/[org]/org`）
-  - 插件会读取 README 中 `GitHub / Name / Email` 表格，优先使用 `Name` 列，并在 GitHub 原生 hovercard 名称区域追加如 `([中文名])` 的显示
-  - GitHub Issue/PR assignees 搜索框也支持输入映射表中的 `Name`、中文名拼音或邮箱前缀，并在候选结果中补充展示映射信息；通过映射追加的候选会复用 GitHub 原生选择与保存流程
+### GitHub 配置
+- **GitHub 增强**：默认启用，不依赖飞书配置
+- **GitHub Org**：可添加多个 Org，每个 Org 配置自己的用户目录仓库
+  - 例如：填写 `https://github.com/xindong/org`，插件会自动识别 Org 为 `xindong`
+  - 插件根据当前仓库 URL 自动选择对应 Org 的映射
+- **用户目录格式**：目录仓库 README 需要包含 `GitHub / Name / Email` 表格
+  - `Name` 会显示在 GitHub 原生 hovercard 中
+  - Issue/PR assignee 搜索支持 Name、中文名拼音和邮箱前缀
 
-### Sentry 配置（可选）
-- **Sentry 域名地址**：你的 Sentry 域名（如：`sentry.com`），支持多个，用逗号分隔
-- **Sentry Issue 创建地址**：后端 API 地址（如：`http://localhost:8080/api/feishu-sentry`）
-  - 用于创建飞书工单、查询现有工单、获取字段选项
+### 更多设置
 
-**注意**：
-- `M-xxx` 会自动识别为 Story 类型
-- `F-xxx` 会自动识别为 Issue 类型  
-- 其他自定义前缀（如 `XX-xxx`）会根据上下文智能判断：
-  - commit message 包含 `fix:`、`bugfix:`、`hotfix:` → Issue
-  - commit message 包含 `feat:`、`chore:`、`refactor:` → Story
-  - 后端会进一步验证并自动更正类型
-- 多个飞书命名空间会按配置顺序依次尝试，并缓存有效的结果
+默认折叠，包含可选能力：
+
+- **飞书项目关联**：默认关闭。开启后可配置飞书命名空间、项目编号前缀和项目链接跳转
+- **GitLab 域名**：用于匹配自建 GitLab 域名，多个域名用逗号分隔
+- **Sentry 工单关联**：配置 Sentry 域名和后端 API 地址后启用
+
+飞书关联关闭时，GitHub Org、用户映射和 assignee/reviewer 搜索增强仍然可用。
 
 ## 使用场景
 
@@ -135,24 +128,15 @@ feat: 新增分享功能 #XX-123456789
         自动识别为 Story
 ```
 
-#### GitHub Commits 页面示例
-```
-feat: 修复 detekt 报错 # XX-6616715346
-                     ↓
-          点击项目 ID 跳转到飞书
-          悬浮显示 Lark Tooltip
-```
+#### GitHub 页面示例
 
-在 GitHub commits 页面（如 `https://github.com/XXXX/XXSDK-Monorepo/commits/branch-name/`）：
-- 📍 commit 标题中的 `# XX-6616715346` 会被识别
-- 🎯 点击项目 ID 部分直接跳转到飞书
-- 💡 悬浮显示飞书项目信息
-- 🔄 自动根据 commit 类型判断 Issue/Story
-- 👤 配置 GitHub 用户映射目录后，hover 用户名时会在 GitHub 原生 hovercard 中显示中文名
+在 GitHub 仓库、Issue 或 PR 页面中：
 
-**配置示例：**
-- 域名地址：`github.com`
-- 项目 ID 前缀：`XX,XX,M,F`（根据实际项目配置）
+- 👤 根据当前 Org 在 hovercard 中显示用户中文名
+- 🔎 assignee/reviewer 搜索支持中文名、拼音和邮箱前缀
+- 🔄 GitHub Turbo 导航后自动切换当前 Org 映射
+
+如果在“更多设置”中启用飞书关联，Commit、Issue 和 PR 中的项目编号还可以跳转到飞书项目。
 
 #### 页面自动刷新
 - ✅ 切换到 Commits 标签 → 自动扫描新链接

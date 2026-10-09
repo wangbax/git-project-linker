@@ -109,6 +109,10 @@ export function createGitHubHandler(context) {
     ensureGitHubAssigneeFetchAliasMap();
   }
 
+  function isLarkEnabled() {
+    return getLarkConfigSync()?.lark?.enabled === true;
+  }
+
   function isGitHubDebugEnabled() {
     try {
       return window.localStorage?.getItem("LARK_LINKER_DEBUG") === "1" ||
@@ -174,6 +178,8 @@ export function createGitHubHandler(context) {
   }
 
   function scanGitHubContent() {
+    if (!isLarkEnabled()) return;
+
     measureGitHubDebug("scanGitHubContent", () => {
       replaceGitHubCommits();
       replaceGitHubPullRequests({
@@ -263,11 +269,13 @@ export function createGitHubHandler(context) {
     // GitHub 使用 turbo 进行页面导航
     document.addEventListener('turbo:load', () => {
       scheduleGitHubContentScan(500);
+      ensureGitHubUserAliasMap();
     });
 
     // 也监听 pjax（旧版 GitHub）
     document.addEventListener('pjax:end', () => {
       scheduleGitHubContentScan(500);
+      ensureGitHubUserAliasMap();
     });
   }
 
@@ -275,6 +283,8 @@ export function createGitHubHandler(context) {
    * 替换 GitHub commits 列表中的项目 ID
    */
   function replaceGitHubCommits() {
+    if (!isLarkEnabled()) return false;
+
     return measureGitHubDebug("replaceGitHubCommits", () => {
     // GitHub commits 页面 - commit 标题链接（支持 PR commits tab 的新版 commit row）
     const commitTitleLinks = document.querySelectorAll([
@@ -411,6 +421,8 @@ export function createGitHubHandler(context) {
    * 替换 GitHub Pull Request / Issue 标题、描述和评论中的项目 ID
    */
   function replaceGitHubPullRequests(options = {}) {
+    if (!isLarkEnabled()) return false;
+
     const {
       includeTitles = true,
       includeComments = true,
@@ -560,7 +572,7 @@ export function createGitHubHandler(context) {
 
   function getGitHubPrefixConfig() {
     const LarkConfig = getLarkConfigSync();
-    if (!LarkConfig) {
+    if (!LarkConfig || !isLarkEnabled()) {
       return { LarkConfig: null, prefixList: [] };
     }
 
@@ -773,7 +785,7 @@ export function createGitHubHandler(context) {
         const projectId = tid.split("-")[1];
         const cachedType = tidTypeMap.get(tid);
         let larkType = cachedType || 'story';
-        let larkUrl = `https://project.feishu.cn/${LarkConfig.app}/${larkType}/detail/${projectId}`;
+        let larkUrl = getLarkProjectLink(projectId, larkType);
 
         // 创建内嵌飞书链接（使用 span 模拟链接，避免 a 嵌套问题）
         const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${larkType}" data-lark-url="${larkUrl}" style="cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
@@ -942,6 +954,16 @@ export function createGitHubHandler(context) {
       if (pathSegments.length < 2) return "";
 
       return `${url.origin}/${pathSegments[0]}/${pathSegments[1]}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function getGitHubOrganizationFromDirectoryUrl(directoryUrl) {
+    try {
+      const url = new URL(directoryUrl);
+      const pathSegments = url.pathname.split("/").filter(Boolean);
+      return pathSegments[0] || "";
     } catch (error) {
       return "";
     }
@@ -1541,7 +1563,21 @@ export function createGitHubHandler(context) {
 
   async function ensureGitHubUserAliasMap() {
     const LarkConfig = getLarkConfigSync();
-    const sourceUrl = normalizeGitHubDirectoryUrl(LarkConfig?.githubUserDirectoryUrl);
+    const currentOwner = window.location.pathname.split("/").filter(Boolean)[0] || "";
+    const organizations = Array.isArray(LarkConfig?.github?.organizations)
+      ? LarkConfig.github.organizations
+      : [];
+    const activeOrganization = organizations.find(organization => {
+      const organizationLogin = getGitHubOrganizationFromDirectoryUrl(organization.directoryUrl);
+      return organization.enabled !== false &&
+        organizationLogin.toLowerCase() === currentOwner.toLowerCase();
+    });
+    const legacySourceUrl = organizations.length === 0
+      ? LarkConfig?.githubUserDirectoryUrl
+      : "";
+    const sourceUrl = normalizeGitHubDirectoryUrl(
+      activeOrganization?.directoryUrl || legacySourceUrl
+    );
 
     if (!sourceUrl) {
       githubUserAliasState.sourceUrl = "";
@@ -1560,6 +1596,10 @@ export function createGitHubHandler(context) {
     githubUserAliasState.sourceUrl = sourceUrl;
     githubUserAliasState.promise = loadGitHubUserAliasCache(sourceUrl, { allowExpired: true })
       .then(cachedMap => {
+        if (githubUserAliasState.sourceUrl !== sourceUrl) {
+          return githubUserAliasState.map;
+        }
+
         if (cachedMap) {
           githubUserAliasState.map = cachedMap;
           syncGitHubAssigneeFetchAliasMap(cachedMap);
@@ -1589,8 +1629,10 @@ export function createGitHubHandler(context) {
 
     const htmlText = await response.text();
     const aliasMap = parseGitHubUserAliasMap(htmlText);
-    githubUserAliasState.map = aliasMap;
-    syncGitHubAssigneeFetchAliasMap(aliasMap);
+    if (githubUserAliasState.sourceUrl === sourceUrl) {
+      githubUserAliasState.map = aliasMap;
+      syncGitHubAssigneeFetchAliasMap(aliasMap);
+    }
     await saveGitHubUserAliasCache(sourceUrl, aliasMap);
     return aliasMap;
   }
