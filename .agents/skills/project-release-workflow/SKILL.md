@@ -63,9 +63,14 @@ description: 项目发布工作流。当用户说“发布”“发版”“rele
 9. 创建 GitHub Release：
    - 使用 `gh release create vX.Y.Z` 创建 release。
    - 从 `gh release list` 参考历史 release 标题风格，例如 `✨ vX.Y.Z - ...` 或 `🐛 vX.Y.Z - ...`。
+   - Release 正文必须包含本次发布涉及的合并 PR 列表；每条至少包含 PR 编号、PR 标题和 PR 作者的 `@login`，并链接到对应 PR。
+   - 合并 PR 列表建议使用以下格式，便于回溯发布内容和贡献者：
+     - `- [#123](https://github.com/owner/repo/pull/123) PR 标题 — @author`
+   - 如果本次发布没有合并 PR，正文中明确写出“本次发布无新增 PR”。
    - 如果 `.github/workflows/release.yml` 会在 release 创建时上传产物，除非历史显示需要本地上传，否则让 workflow 自动附加构建产物。
    - 验证 release 已创建，并检查 release workflow 状态。
 
 10. 最终回复：
    - 汇报已合并 PR、发布提交、tag、release URL 和验证结果。
+   - 最终回复中的发布摘要也要列出本次发布涉及的 PR 和对应 `@author`。
    - 说明仍在运行或失败的 GitHub Actions。
