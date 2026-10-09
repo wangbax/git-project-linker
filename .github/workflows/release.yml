@@ -29,21 +29,21 @@ jobs:
       - name: Package extension
         run: |
           cd dist
-          zip -r ../lark-project-linker-${{ github.ref_name }}.zip .
+          zip -r ../github-linker-${{ github.ref_name }}.zip .
           cd ..
 
       # 上传构建产物
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: extension-package
-          path: lark-project-linker-${{ github.ref_name }}.zip
+          name: github-linker-${{ github.ref_name }}
+          path: github-linker-${{ github.ref_name }}.zip
 
       # 发布到 Release
       - name: Upload to Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: lark-project-linker-${{ github.ref_name }}.zip
+          files: github-linker-${{ github.ref_name }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
