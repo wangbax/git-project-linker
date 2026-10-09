@@ -2,7 +2,7 @@
   "name": "github-linker",
   "productName": "GitHub Linker",
   "description": "增强 GitHub/GitLab 研发协作的浏览器插件，帮助团队快速识别人、查找 assignee/reviewer，并关联代码、项目和 Sentry 问题",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "scripts": {
     "build": "NODE_ENV=production gulp build",
     "dev": "NODE_ENV=development gulp dev"

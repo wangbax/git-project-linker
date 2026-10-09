@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "2.5.0",
+  "version": "2.5.1",
   "name": "GitHub Linker",
   "description": "增强 GitHub/GitLab 协作，支持 Org 用户映射、assignee/reviewer 搜索和可选项目关联",
   "icons": {
