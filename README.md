@@ -1,25 +1,32 @@
 # GitHub Linker
 
-一个以 GitHub 为主、兼容 GitLab 的浏览器增强插件。支持多 GitHub Org 用户映射、hovercard 中文名、assignee/reviewer 搜索增强，以及可选的飞书项目关联。
+GitHub Linker 是一个面向研发团队的浏览器插件，用来增强 GitHub 和 GitLab 的日常协作，并把代码页面中的人员、项目编号和问题单串起来。
+
+无论你是在 GitHub 查看 PR、在 GitLab 查看 MR，还是在 Sentry 排查问题，它都能减少复制登录名、切换页面和手动查工单的步骤。
 
 产品方向和迁移方案见：[GitHub Linker 产品方向方案](./docs/product-direction.md)。
 
-[飞书参考资料](https://bytedance.larkoffice.com/wiki/XusFwYp2ZiqltkkSTaJc7eMdnYb)
+## 为什么值得安装
 
-## ✨ 主要功能
+- **更快找到正确的人**：在 GitHub hovercard、assignee 和 reviewer 选择器中补充团队目录里的中文名、拼音和邮箱前缀，降低“只认识登录名、不知道是谁”的沟通成本。
+- **支持多个 GitHub Org**：每个 Org 可以配置自己的用户目录仓库，插件会从当前仓库地址自动识别 Org，不需要反复切换配置。
+- **让代码和项目保持关联**：开启可选的飞书项目关联后，Commit、Issue 和 PR 中的 `#XX-xxx`、`#M-xxx`、`#F-xxx` 等编号可以直接跳转到对应项目，并根据 `fix`、`feat` 等提交类型识别 Issue 或 Story。
+- **缩短故障处理路径**：在 Sentry Issue 页面直接创建飞书工单，自动带入标题、描述和问题 URL，减少复制粘贴。
+- **不改变现有工作方式**：GitHub 用户映射和搜索增强无需配置飞书；飞书、GitLab 和 Sentry 能力都放在“更多设置”中，按需启用。
+
+## 主要功能
 
 ### GitHub/GitLab 核心增强
-- 👤 **GitHub 用户 hovercard 补中文名**：可基于 GitHub 目录仓库 README 的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 名称区域补上中文名
-- 🚀 **实时监听**：自动检测页面变化、标签切换、URL 变化
-- ⚡ **性能优化**：防抖机制、智能缓存、避免重复处理
-- 👥 **多 Org 映射**：按当前 GitHub 仓库所属 Org 加载对应的用户目录
-- 🔎 **Assignee/Reviewer 搜索增强**：支持中文名、拼音和邮箱前缀搜索
-- 🌐 **多平台支持**：支持 GitHub 和 GitLab
+- 👤 **团队成员识别**：基于用户目录仓库中的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 中补充中文名。
+- 👥 **多 Org 用户映射**：按当前仓库所属 Org 自动加载对应目录。
+- 🔎 **Assignee/Reviewer 搜索增强**：支持中文名、拼音和邮箱前缀搜索。
+- 🚀 **页面自动适配**：支持 GitHub Turbo 导航、标签切换和动态加载内容。
+- 🌐 **多平台支持**：支持 GitHub 和 GitLab。
 
 ### 更多设置
-- 🔗 **可选飞书关联**：将项目编号转换为飞书项目链接
-- 🎯 **智能类型识别**：根据 commit 类型前缀判断 Issue 或 Story
-- 🧩 **Sentry 集成**：在 Sentry Issue 页面创建飞书工单，并自动填充标题、描述和 URL
+- 🔗 **飞书项目关联**：可选开启，将项目编号转换为飞书项目链接。
+- 🎯 **智能类型识别**：根据 commit 类型前缀判断 Issue 或 Story。
+- 🧩 **Sentry 工单关联**：在 Sentry Issue 页面创建并回填飞书工单。
 
 ## 功能预览
 
@@ -28,7 +35,7 @@
   <img src="./docs/install-1.png" alt="GitHub Linker 多 Org 配置页" width="72%" />
 </p>
 
-支持添加多个 GitHub Org，并根据用户目录仓库地址自动识别 Org 登录名。
+支持添加多个 GitHub Org，并根据用户目录仓库地址自动识别 Org 登录名。首次安装只配置 GitHub Org 即可使用核心增强能力。
 
 ### Assignee/Reviewer 搜索增强
 <p align="center">
