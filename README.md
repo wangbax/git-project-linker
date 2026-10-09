@@ -23,10 +23,17 @@
 
 ## 功能预览
 
-### GitLab/GitHub 链接转换
+### GitHub Org 配置
 <p align="center">
-  <img src="./docs/preview-1.png" alt="GitLab MR 列表" width="48%" />
-  <img src="./docs/preview-2.png" alt="GitHub Commits" width="48%" />
+  <img src="./docs/install-1.png" alt="GitHub Linker 多 Org 配置页" width="72%" />
+</p>
+
+支持添加多个 GitHub Org，并根据用户目录仓库地址自动识别 Org 登录名。
+
+### Assignee/Reviewer 搜索增强
+<p align="center">
+  <img src="./docs/preview-1.png" alt="GitHub Assignee 搜索增强" width="48%" />
+  <img src="./docs/preview-2.png" alt="GitHub Reviewer 搜索增强" width="48%" />
 </p>
 
 ## 安装
@@ -81,8 +88,7 @@ npm run build
 3. 点击「加载已解压的扩展程序」
 
 <p align="center">
-  <img src="./docs/install-1.png" alt="install" width="42%" />
-  <img src="./docs/install-2.png" alt="install" width="42%" />
+  <img src="./docs/install-2.png" alt="选择 dist 文件夹加载扩展" width="52%" />
 </p>
 
 4. 选择项目的 `dist` 文件夹，扩展安装成功！
