@@ -78,7 +78,7 @@ function static() {
 function manifest() {
   const pkg = require("./package.json");
   const manifest = require("./src/manifest.json");
-  manifest.name = isProd ? pkg.name : `${pkg.name}-dev`;
+  manifest.name = isProd ? (pkg.productName || pkg.name) : `${pkg.productName || pkg.name} Dev`;
   manifest.description = pkg.description;
   manifest.version = pkg.version;
   fs.writeFileSync(

@@ -91,7 +91,7 @@ async function main() {
         });
 
         if (data.actualType) {
-          updateLinksWithCorrectType(data.tid, data.actualType);
+          updateLinksWithCorrectType(data.tid, data.actualType, data.app);
           saveCacheToStorage(data.tid, data.actualType, data.data);
         }
         break;
@@ -208,14 +208,28 @@ async function main() {
 
   // ==================== 链接生成与更新 ====================
   
-  function getLarkProjectLink(projectId, type = "story") {
+  function isLarkEnabled() {
+    return getLarkConfigSync()?.lark?.enabled === true;
+  }
+
+  function getLarkProjectLink(projectId, type = "story", appOverride = "") {
     const LarkConfig = getLarkConfigSync();
+    if (!LarkConfig || !isLarkEnabled() || !LarkConfig.app) return "";
+
+    const configuredApp = Array.isArray(LarkConfig.lark?.namespaces)
+      ? LarkConfig.lark.namespaces[0]
+      : String(LarkConfig.app).split(",")[0].trim();
+    const app = appOverride || configuredApp;
+    if (!app) return "";
+
     if (type === "issue")
-      return `${LARK_DOMAIN_HOST}/${LarkConfig.app}/issue/detail/${projectId}`;
-    return `${LARK_DOMAIN_HOST}/${LarkConfig.app}/story/detail/${projectId}`;
+      return `${LARK_DOMAIN_HOST}/${app}/issue/detail/${projectId}`;
+    return `${LARK_DOMAIN_HOST}/${app}/story/detail/${projectId}`;
   }
 
   function fetchLarkProjectInfo(data) {
+    if (!isLarkEnabled()) return;
+
     const { app, tid } = data;
 
     if (cacheMap.has(tid) && cacheMap.get(tid).locker) {
@@ -242,9 +256,9 @@ async function main() {
     });
   }
 
-  function updateLinksWithCorrectType(tid, actualType) {
+  function updateLinksWithCorrectType(tid, actualType, appOverride = "") {
     const LarkConfig = getLarkConfigSync();
-    if (!LarkConfig) return;
+    if (!LarkConfig || !isLarkEnabled()) return;
 
     tidTypeMap.set(tid, actualType);
 
@@ -263,7 +277,7 @@ async function main() {
       if (parentIsNavigationLink) {
         // 这是导航链接内部的飞书链接，只更新类型和 URL，不移除属性
         const projectId = tid.split("-")[1];
-        const url = getLarkProjectLink(projectId, actualType);
+        const url = getLarkProjectLink(projectId, actualType, appOverride);
         if (link.href !== url) {
           link.href = url;
         }
@@ -272,7 +286,7 @@ async function main() {
       }
       
       const projectId = tid.split("-")[1];
-      const url = getLarkProjectLink(projectId, actualType);
+      const url = getLarkProjectLink(projectId, actualType, appOverride);
       if (link.href !== url) {
         link.href = url;
       }
@@ -283,7 +297,7 @@ async function main() {
     const githubSpans = document.querySelectorAll(`span.github-lark-id[data-tid="${tid}"]`);
     githubSpans.forEach(span => {
       const projectId = tid.split("-")[1];
-      const url = getLarkProjectLink(projectId, actualType);
+      const url = getLarkProjectLink(projectId, actualType, appOverride);
       span.dataset.larkType = actualType;
       span.dataset.larkUrl = url;
     });
@@ -345,7 +359,7 @@ async function main() {
 
   function replaceLarkLinks(dom) {
     const LarkConfig = getLarkConfigSync();
-    if (!LarkConfig) {
+    if (!LarkConfig || !isLarkEnabled()) {
       return false;
     }
 
@@ -444,6 +458,10 @@ async function main() {
 
   function replaceProjectIdToLarkProjectLink(dom, className) {
     const LarkConfig = getLarkConfigSync();
+    if (!LarkConfig || !isLarkEnabled()) {
+      return [false, dom?.innerHTML || ""];
+    }
+
     const prefixes = LarkConfig?.prefixes || "m,f";
     const prefixList = prefixes.split(",").map(p => p.trim().toLowerCase()).filter(p => p);
     const reg = new RegExp(`#(${prefixList.join("|")})-\\d{7,}`, "gi");
@@ -495,6 +513,8 @@ async function main() {
   // ==================== 全局扫描 ====================
   
   function scanAllGfmLinks() {
+    if (!isLarkEnabled()) return;
+
     const selector = isGitHub 
       ? 'a.issue-link, a[data-hovercard-type="issue"], a[data-hovercard-type="pull_request"]'
       : 'a.gfm.gfm-issue, a.js-prefetch-document';
