@@ -47,8 +47,8 @@
 #### 1. 克隆项目
 
 ```bash
-git clone https://github.com/wangbax/lark-project-linker.git
-cd lark-project-linker
+git clone https://github.com/wangbax/git-project-linker.git
+cd git-project-linker
 ```
 
 #### 2. 安装依赖

@@ -7,6 +7,11 @@ const path = require("path");
 
 const isProd = process.env.NODE_ENV === "production";
 
+function cleanDist() {
+  fs.rmSync(path.resolve(__dirname, "dist"), { recursive: true, force: true });
+  return Promise.resolve();
+}
+
 function jsIndex() {
   return rollup
     .rollup({
@@ -68,11 +73,11 @@ function jsGitHubAssigneeFetchPatch() {
 }
 
 function html() {
-  return src("./src/html/*.html").pipe(dest("dist"));
+  return src("./src/html/options.html").pipe(dest("dist"));
 }
 
 function static() {
-  return src("./src/assets/**.*").pipe(dest("dist"));
+  return src(["./src/assets/3.4.js", "./src/assets/icon.png"]).pipe(dest("dist"));
 }
 
 function manifest() {
@@ -90,6 +95,7 @@ function manifest() {
 
 if (isProd) {
   exports.build = series(
+    cleanDist,
     jsOptions,
     jsGitHubAssigneeFetchPatch,
     jsIndex,
