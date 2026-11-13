@@ -109,7 +109,7 @@ npm run build
 - **GitHub Org**：可添加多个 Org，每个 Org 配置自己的用户目录仓库
   - 例如：填写 `https://github.com/xindong/org`，插件会自动识别 Org 为 `xindong`
   - 插件根据当前仓库 URL 自动选择对应 Org 的映射
-- **用户目录格式**：目录仓库 README 需要包含 `GitHub / Name / Email` 表格
+- **用户目录格式**：目录仓库 README 需要包含 `GitHub` 列，以及 `Name`、`Email` 中的至少一列
   - `Name` 会显示在 GitHub 原生 hovercard 中
   - Issue/PR assignee 搜索支持 Name、中文名拼音和邮箱前缀
 
@@ -277,9 +277,23 @@ if (isBitbucket) {
 
 ### 调试技巧
 
+#### 用户名字未出现
+
+用户映射在悬浮或聚焦 GitHub 用户链接时加载。网络请求 10 秒超时，临时网络错误最多自动重试 3 次（间隔 1、5、30 秒）；恢复联网、返回页面或稍后再次悬浮可重新尝试。成功加载后，后续交互会在映射超过 5 分钟时触发后台刷新。刷新失败、返回登录页或没有可读表格时会保留原有映射；权限错误不会持续自动重试。
+
+在出问题的 GitHub 页面的控制台运行以下代码，再悬浮一次用户名，可查看 `userAliases:` 开头的诊断日志：
+
+```javascript
+localStorage.setItem('LARK_LINKER_DEBUG', '1');
+```
+
+日志区分用户链接触发、缓存加载、请求开始/成功/失败、未收录的登录名、未识别的卡片布局，以及名字被反复移除。名字被其他脚本连续移除时会限制补回频率，避免相互修改 DOM。日志有助于判断问题发生在哪一步，不代表已经确认某个扩展造成干扰。
+
+关闭日志：`localStorage.removeItem('LARK_LINKER_DEBUG')`。
+
 #### 查看缓存
 ```javascript
-// 在浏览器控制台中
+// 在扩展选项页或 Service Worker 的控制台中运行
 chrome.storage.local.get('LARK_PROJECT_TYPE_CACHE', (result) => {
   console.log(result);
 });
@@ -287,9 +301,15 @@ chrome.storage.local.get('LARK_PROJECT_TYPE_CACHE', (result) => {
 
 #### 清除缓存
 ```javascript
-// 在浏览器控制台中
-chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
+// 在扩展选项页或 Service Worker 的控制台中运行；保留扩展配置
+chrome.storage.local.remove(['LARK_PROJECT_TYPE_CACHE', 'GITHUB_USER_ALIAS_CACHE']);
 ```
+
+清除后刷新对应的 GitHub 页面，以重新加载页面内存中的映射。
+
+#### 回归检查
+
+运行 `npm test` 检查网络失败恢复、缓存保护、卡片重建、插件干扰和 Org 切换；运行 `npm run build` 构建可本地加载的 `dist` 目录。
 
 ## 更新日志
 

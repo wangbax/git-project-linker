@@ -314,8 +314,13 @@ export async function loadGitHubUserAliasCache(sourceUrl, options = {}) {
       return null;
     }
 
-    const entries = item.entries.filter(([login, userInfo]) => {
-      return login && userInfo && (userInfo.name || userInfo.emailPrefix);
+    const entries = item.entries.flatMap(entry => {
+      if (!Array.isArray(entry)) return [];
+      const [login, userInfo] = entry;
+      if (typeof login !== "string" || !login.trim() || !userInfo) return [];
+      const name = typeof userInfo.name === "string" ? userInfo.name.trim() : "";
+      const emailPrefix = typeof userInfo.emailPrefix === "string" ? userInfo.emailPrefix.trim() : "";
+      return name || emailPrefix ? [[login.trim(), { name, emailPrefix }]] : [];
     });
 
     return entries.length > 0 ? new Map(entries) : null;
