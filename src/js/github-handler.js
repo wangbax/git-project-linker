@@ -30,8 +30,17 @@ export function createGitHubHandler(context) {
     refreshSourceUrl: "",
     refreshPromise: null,
     map: new Map(),
+    generation: 0,
+    cacheLoaded: false,
+    refreshedAt: 0,
+    retryAt: 0,
+    failures: 0,
+    retryTimer: null,
   };
   let githubUserHovercardObserver = null;
+  let githubUserHovercardScanTimer = null;
+  const pendingGitHubHovercards = new Set();
+  const githubHovercardNameRemovals = new WeakMap();
   let githubAssigneePickerObserver = null;
   let githubAssigneePickerScanTimer = null;
   const githubAssigneeFilterInputs = new WeakSet();
@@ -54,6 +63,10 @@ export function createGitHubHandler(context) {
   const githubDebugEntries = [];
   let githubDebugFlushTimer = null;
   const MAX_GITHUB_TEXT_SCAN_LENGTH = 20000;
+  const GITHUB_USER_ALIAS_REQUEST_TIMEOUT = 10000;
+  const GITHUB_USER_ALIAS_REFRESH_INTERVAL = 5 * 60 * 1000;
+  const GITHUB_USER_ALIAS_RETRY_DELAYS = [1000, 5000, 30000];
+  const GITHUB_USER_HOVERCARD_SELECTOR = ".Popover-message, .js-hovercard-content";
   const GITHUB_ASSIGNEE_FILTER_INPUT_SELECTOR = 'input[aria-label="Filter assignees"], input[placeholder="Filter assignees"]';
   const GITHUB_LEGACY_ASSIGNEE_FILTER_INPUT_SELECTOR = [
     'details-menu input#assignee-filter-field',
@@ -1537,7 +1550,7 @@ export function createGitHubHandler(context) {
       const nameIndex = headers.indexOf("name");
       const emailIndex = headers.indexOf("email");
 
-      if (githubIndex === -1 || emailIndex === -1) return;
+      if (githubIndex === -1 || (nameIndex === -1 && emailIndex === -1)) return;
 
       const rows = Array.from(table.querySelectorAll("tr")).slice(1);
       rows.forEach(row => {
@@ -1547,7 +1560,7 @@ export function createGitHubHandler(context) {
         const githubLink = cells[githubIndex].querySelector("a[href]");
         const login = extractGitHubLoginFromLink(githubLink || cells[githubIndex]);
         const name = nameIndex >= 0 ? (cells[nameIndex].textContent || "").trim() : "";
-        const emailPrefix = extractEmailPrefix(cells[emailIndex].textContent || "");
+        const emailPrefix = emailIndex >= 0 ? extractEmailPrefix(cells[emailIndex].textContent || "") : "";
 
         if (login && (name || emailPrefix)) {
           aliasMap.set(login, {
@@ -1579,104 +1592,225 @@ export function createGitHubHandler(context) {
       activeOrganization?.directoryUrl || legacySourceUrl
     );
 
-    if (!sourceUrl) {
-      githubUserAliasState.sourceUrl = "";
+    if (githubUserAliasState.sourceUrl !== sourceUrl) {
+      clearTimeout(githubUserAliasState.retryTimer);
+      githubUserAliasState.sourceUrl = sourceUrl;
+      githubUserAliasState.generation++;
       githubUserAliasState.promise = null;
       githubUserAliasState.refreshSourceUrl = "";
       githubUserAliasState.refreshPromise = null;
       githubUserAliasState.map = new Map();
+      githubUserAliasState.cacheLoaded = false;
+      githubUserAliasState.refreshedAt = 0;
+      githubUserAliasState.retryAt = 0;
+      githubUserAliasState.failures = 0;
+      githubUserAliasState.retryTimer = null;
       syncGitHubAssigneeFetchAliasMap(githubUserAliasState.map);
+    }
+
+    if (!sourceUrl) {
       return githubUserAliasState.map;
     }
 
-    if (githubUserAliasState.promise && githubUserAliasState.sourceUrl === sourceUrl) {
+    if (githubUserAliasState.promise) {
       return githubUserAliasState.promise;
     }
 
-    githubUserAliasState.sourceUrl = sourceUrl;
-    githubUserAliasState.promise = loadGitHubUserAliasCache(sourceUrl, { allowExpired: true })
+    const generation = githubUserAliasState.generation;
+    if (githubUserAliasState.cacheLoaded) {
+      if (Date.now() < githubUserAliasState.retryAt) {
+        return githubUserAliasState.map;
+      }
+      if (githubUserAliasState.map.size > 0) {
+        if (Date.now() - githubUserAliasState.refreshedAt >= GITHUB_USER_ALIAS_REFRESH_INTERVAL) {
+          refreshGitHubUserAliasMap(sourceUrl, generation);
+        }
+        return githubUserAliasState.map;
+      }
+      return refreshGitHubUserAliasMap(sourceUrl, generation);
+    }
+
+    const promise = loadGitHubUserAliasCache(sourceUrl, { allowExpired: true })
       .then(cachedMap => {
-        if (githubUserAliasState.sourceUrl !== sourceUrl) {
+        if (!isCurrentGitHubUserAliasRequest(sourceUrl, generation)) {
           return githubUserAliasState.map;
         }
 
-        if (cachedMap) {
+        githubUserAliasState.cacheLoaded = true;
+        debugGitHubLog("userAliases:cacheLoaded", { sourceUrl, count: cachedMap?.size || 0 });
+        if (cachedMap?.size > 0) {
           githubUserAliasState.map = cachedMap;
           syncGitHubAssigneeFetchAliasMap(cachedMap);
-          refreshGitHubUserAliasMap(sourceUrl);
+          refreshGitHubUserAliasMap(sourceUrl, generation);
           return cachedMap;
         }
 
-        return fetchAndCacheGitHubUserAliasMap(sourceUrl);
+        return refreshGitHubUserAliasMap(sourceUrl, generation);
       })
-      .catch(async error => {
+      .catch(error => {
         console.error("[GitHub Handler] 加载 GitHub 用户映射失败:", error);
-        githubUserAliasState.map = new Map();
         return githubUserAliasState.map;
+      })
+      .finally(() => {
+        // Only pending work is shared; a failed load must not lock the page until reload.
+        if (githubUserAliasState.promise === promise) {
+          githubUserAliasState.promise = null;
+        }
       });
 
-    return githubUserAliasState.promise;
+    githubUserAliasState.promise = promise;
+    return promise;
   }
 
-  async function fetchAndCacheGitHubUserAliasMap(sourceUrl) {
-    const response = await fetch(sourceUrl, {
-      credentials: "include",
+  function isCurrentGitHubUserAliasRequest(sourceUrl, generation) {
+    return githubUserAliasState.sourceUrl === sourceUrl &&
+      githubUserAliasState.generation === generation;
+  }
+
+  async function fetchAndCacheGitHubUserAliasMap(sourceUrl, generation) {
+    const controller = new AbortController();
+    let timer;
+    const timeout = new Promise((resolve, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error("GitHub user directory request timed out");
+        error.name = "TimeoutError";
+        reject(error);
+        controller.abort();
+      }, GITHUB_USER_ALIAS_REQUEST_TIMEOUT);
     });
+    let aliasMap;
 
-    if (!response.ok) {
-      throw new Error(`GitHub user directory request failed: ${response.status}`);
+    try {
+      aliasMap = await Promise.race([timeout, (async () => {
+        const response = await fetch(sourceUrl, {
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const error = new Error(`GitHub user directory request failed: ${response.status}`);
+          error.status = response.status;
+          error.retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+          throw error;
+        }
+
+        const htmlText = await response.text();
+        const parsedMap = parseGitHubUserAliasMap(htmlText);
+        if (parsedMap.size === 0) {
+          const error = new Error("GitHub user directory contains no readable user mapping; keeping the previous cache");
+          error.retryable = false;
+          throw error;
+        }
+        return parsedMap;
+      })()]);
+    } finally {
+      clearTimeout(timer);
     }
 
-    const htmlText = await response.text();
-    const aliasMap = parseGitHubUserAliasMap(htmlText);
-    if (githubUserAliasState.sourceUrl === sourceUrl) {
-      githubUserAliasState.map = aliasMap;
-      syncGitHubAssigneeFetchAliasMap(aliasMap);
+    if (isCurrentGitHubUserAliasRequest(sourceUrl, generation)) {
+      await saveGitHubUserAliasCache(sourceUrl, aliasMap);
     }
-    await saveGitHubUserAliasCache(sourceUrl, aliasMap);
     return aliasMap;
   }
 
-  function refreshGitHubUserAliasMap(sourceUrl) {
+  function refreshGitHubUserAliasMap(sourceUrl, generation) {
+    if (!isCurrentGitHubUserAliasRequest(sourceUrl, generation) || Date.now() < githubUserAliasState.retryAt) {
+      return Promise.resolve(githubUserAliasState.map);
+    }
     if (githubUserAliasState.refreshPromise && githubUserAliasState.refreshSourceUrl === sourceUrl) {
       return githubUserAliasState.refreshPromise;
     }
 
+    clearTimeout(githubUserAliasState.retryTimer);
+    githubUserAliasState.retryTimer = null;
     githubUserAliasState.refreshSourceUrl = sourceUrl;
-    githubUserAliasState.refreshPromise = fetchAndCacheGitHubUserAliasMap(sourceUrl)
+    debugGitHubLog("userAliases:fetchStarted", { sourceUrl });
+    const promise = fetchAndCacheGitHubUserAliasMap(sourceUrl, generation)
       .then(aliasMap => {
+        if (!isCurrentGitHubUserAliasRequest(sourceUrl, generation)) return githubUserAliasState.map;
+        githubUserAliasState.map = aliasMap;
+        githubUserAliasState.refreshedAt = Date.now();
+        githubUserAliasState.failures = 0;
+        githubUserAliasState.retryAt = 0;
+        syncGitHubAssigneeFetchAliasMap(aliasMap);
+        debugGitHubLog("userAliases:fetchSucceeded", { sourceUrl, count: aliasMap.size });
         collectGitHubHovercardContainers(document.body).forEach(enhanceGitHubHovercard);
         scanGitHubAssigneePickers(document.body);
         return aliasMap;
       })
       .catch(error => {
         console.error("[GitHub Handler] 刷新 GitHub 用户映射缓存失败:", error);
+        if (!isCurrentGitHubUserAliasRequest(sourceUrl, generation)) return githubUserAliasState.map;
+
+        const failures = ++githubUserAliasState.failures;
+        const delay = GITHUB_USER_ALIAS_RETRY_DELAYS[Math.min(failures - 1, GITHUB_USER_ALIAS_RETRY_DELAYS.length - 1)];
+        const automaticRetry = error.retryable !== false && failures <= GITHUB_USER_ALIAS_RETRY_DELAYS.length;
+        githubUserAliasState.retryAt = Date.now() + (error.retryable === false ? 30000 : delay);
+        debugGitHubLog("userAliases:fetchFailed", {
+          sourceUrl, message: error.message, status: error.status,
+          retainedCount: githubUserAliasState.map.size, automaticRetry,
+        });
+        if (automaticRetry) {
+          githubUserAliasState.retryTimer = setTimeout(() => {
+            githubUserAliasState.retryTimer = null;
+            if (isCurrentGitHubUserAliasRequest(sourceUrl, generation) && !document.hidden) {
+              refreshGitHubUserAliasMap(sourceUrl, generation);
+            }
+          }, delay);
+        }
         return githubUserAliasState.map;
+      })
+      .finally(() => {
+        if (githubUserAliasState.refreshPromise === promise) {
+          githubUserAliasState.refreshPromise = null;
+        }
       });
 
-    return githubUserAliasState.refreshPromise;
+    githubUserAliasState.refreshPromise = promise;
+    return promise;
+  }
+
+  function getGitHubHovercardNameSection(container) {
+    const section = container.querySelector('section[aria-label="User login and name"]');
+    if (section) return section;
+
+    // Legacy cards use a heading row rather than the newer labelled section.
+    const profileLink = Array.from(container.querySelectorAll(".f4 a[href], .f5 a[href], h3 a[href], h4 a[href]"))
+      .find(link => {
+        if (link.querySelector("img, svg")) return false;
+        try {
+          const url = new URL(link.getAttribute("href"), window.location.origin);
+          const login = url.pathname.split("/").filter(Boolean);
+          return url.origin === window.location.origin && login.length === 1 &&
+            (link.textContent || "").trim().replace(/^@/, "").toLowerCase() === login[0].toLowerCase();
+        } catch (error) {
+          return false;
+        }
+      });
+    return profileLink?.parentElement || null;
   }
 
   function extractLoginFromHovercard(container) {
     if (!container) return "";
 
-    const hydroNode = container.querySelector("[data-hydro-view]");
+    // Reused cards can retain the previous user's analytics payload briefly.
+    const loginLink = getGitHubHovercardNameSection(container)?.querySelector('a[href]');
+    if (loginLink) {
+      return extractGitHubLoginFromLink(loginLink);
+    }
+
+    const hydroNode = container.matches("[data-hydro-view]") ? container : container.querySelector("[data-hydro-view]");
     const hydroPayload = hydroNode?.getAttribute("data-hydro-view");
     if (hydroPayload) {
       try {
         const parsed = JSON.parse(hydroPayload);
         const loginFromPayload = parsed?.payload?.card_user_login;
-        if (loginFromPayload) {
-          return loginFromPayload;
+        if (typeof loginFromPayload === "string" && loginFromPayload.trim()) {
+          return loginFromPayload.trim();
         }
       } catch (error) {
         // ignore malformed payloads and fall through to DOM-based extraction
       }
-    }
-
-    const loginLink = container.querySelector('section[aria-label="User login and name"] a[href]');
-    if (loginLink) {
-      return extractGitHubLoginFromLink(loginLink);
     }
 
     return "";
@@ -1685,7 +1819,7 @@ export function createGitHubHandler(context) {
   function appendDisplayNameToHovercard(container, displayName) {
     if (!container || !displayName) return false;
 
-    const nameSection = container.querySelector('section[aria-label="User login and name"]');
+    const nameSection = getGitHubHovercardNameSection(container);
     if (!nameSection) return false;
 
     const loginLink = nameSection.querySelector('a[href]');
@@ -1717,44 +1851,42 @@ export function createGitHubHandler(context) {
     if (!root || root.nodeType !== Node.ELEMENT_NODE) return [];
 
     const containerSet = new Set();
-    if (root.matches?.(".Popover-message")) {
+    if (root.matches?.(GITHUB_USER_HOVERCARD_SELECTOR)) {
       containerSet.add(root);
     }
 
-    const ancestorPopover = root.closest?.(".Popover-message");
+    const ancestorPopover = root.closest?.(GITHUB_USER_HOVERCARD_SELECTOR);
     if (ancestorPopover) {
       containerSet.add(ancestorPopover);
     }
 
-    root.querySelectorAll(".Popover-message").forEach(container => {
+    root.querySelectorAll(GITHUB_USER_HOVERCARD_SELECTOR).forEach(container => {
       containerSet.add(container);
     });
 
     return Array.from(containerSet);
   }
 
-  function getGitHubHovercardContainerFromAddedNode(node) {
-    if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
-    if (node.classList?.contains("github-user-real-name")) return null;
-
-    if (node.matches?.(".Popover-message")) {
-      return node;
-    }
-
-    return node.closest?.(".Popover-message") || null;
-  }
-
   function enhanceGitHubHovercard(container) {
-    if (!container) return;
+    if (!container?.isConnected) return;
 
     const login = extractLoginFromHovercard(container);
-    if (!login) return;
+    if (!login) {
+      debugGitHubLog("userAliases:unsupportedHovercard", { reason: "missingLogin" });
+      return;
+    }
 
     const userInfo = getGitHubUserInfoByLogin(login);
     const displayName = buildGitHubUserDisplayName(userInfo);
-    if (!displayName) return;
+    if (!displayName) {
+      container.querySelectorAll(".github-user-real-name").forEach(element => element.remove());
+      debugGitHubLog("userAliases:unmappedLogin", { login });
+      return;
+    }
 
-    appendDisplayNameToHovercard(container, displayName);
+    if (!appendDisplayNameToHovercard(container, displayName)) {
+      debugGitHubLog("userAliases:unsupportedHovercard", { login });
+    }
   }
 
   function isGitHubAssigneeFilterInput(element) {
@@ -4214,28 +4346,101 @@ export function createGitHubHandler(context) {
     scanGitHubAssigneePickers(document.body);
   }
 
+  function scheduleGitHubHovercardEnhancement(containers) {
+    containers.forEach(container => {
+      if (container.isConnected) pendingGitHubHovercards.add(container);
+    });
+    if (pendingGitHubHovercards.size === 0 || githubUserHovercardScanTimer) return;
+
+    githubUserHovercardScanTimer = setTimeout(() => {
+      githubUserHovercardScanTimer = null;
+      const cards = Array.from(pendingGitHubHovercards);
+      pendingGitHubHovercards.clear();
+      ensureGitHubUserAliasMap().then(() => {
+        cards.forEach(enhanceGitHubHovercard);
+      });
+    }, 50);
+  }
+
+  function recoverGitHubUserAliases() {
+    if (!githubUserAliasState.sourceUrl || document.hidden) return;
+    ensureGitHubUserAliasMap().then(() => {
+      scheduleGitHubHovercardEnhancement(collectGitHubHovercardContainers(document.body));
+    });
+  }
+
   function ensureGitHubHovercardObserver() {
     if (githubUserHovercardObserver) {
       return;
     }
 
     githubUserHovercardObserver = new MutationObserver((mutations) => {
+      const containers = new Set();
       mutations.forEach(mutation => {
-        mutation.addedNodes.forEach(node => {
-          const hovercard = getGitHubHovercardContainerFromAddedNode(node);
-          if (hovercard) {
-            ensureGitHubUserAliasMap().then(() => {
-              enhanceGitHubHovercard(hovercard);
-            });
+        const target = mutation.target.nodeType === Node.ELEMENT_NODE
+          ? mutation.target : mutation.target.parentElement;
+        if (target?.closest(".github-user-real-name")) return;
+        if (mutation.addedNodes.length > 0 && mutation.removedNodes.length === 0 &&
+          Array.from(mutation.addedNodes).every(node => node.nodeType === Node.ELEMENT_NODE &&
+            node.matches(".github-user-real-name"))) return;
+
+        const parentCard = target?.closest(GITHUB_USER_HOVERCARD_SELECTOR);
+        if (parentCard && Array.from(mutation.removedNodes).some(node =>
+          node.nodeType === Node.ELEMENT_NODE && node.matches(".github-user-real-name"))) {
+          const previous = githubHovercardNameRemovals.get(parentCard);
+          const removals = previous && Date.now() - previous.since < 1000
+            ? { since: previous.since, count: previous.count + 1 }
+            : { since: Date.now(), count: 1 };
+          githubHovercardNameRemovals.set(parentCard, removals);
+          if (removals.count > 3) {
+            debugGitHubLog("userAliases:repeatedNameRemoval", { count: removals.count });
+            return;
           }
+        }
+        if (parentCard) containers.add(parentCard);
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType !== Node.ELEMENT_NODE || node.matches(".github-user-real-name")) return;
+          // GitHub and other extensions can insert the entire wrapper in one mutation.
+          collectGitHubHovercardContainers(node).forEach(card => containers.add(card));
         });
       });
+      scheduleGitHubHovercardEnhancement(Array.from(containers));
     });
 
-    githubUserHovercardObserver.observe(document.body, {
+    githubUserHovercardObserver.observe(document.documentElement, {
       childList: true,
       subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["href", "aria-label", "data-hydro-view"],
     });
+
+    const onUserLinkInteraction = event => {
+      const link = event.target?.closest?.('a[data-hovercard-type="user"][data-hovercard-url]');
+      if (!link || (event.relatedTarget?.nodeType && link.contains(event.relatedTarget))) return;
+      debugGitHubLog("userAliases:userLinkInteraction", { trigger: event.type });
+      // Capture phase warms the map even if another plugin stops the event later.
+      ensureGitHubUserAliasMap().then(() => {
+        scheduleGitHubHovercardEnhancement(collectGitHubHovercardContainers(document.body));
+      });
+    };
+    document.addEventListener("mouseover", onUserLinkInteraction, true);
+    document.addEventListener("focusin", onUserLinkInteraction, true);
+    window.addEventListener("online", () => {
+      githubUserAliasState.retryAt = 0;
+      recoverGitHubUserAliases();
+    });
+    document.addEventListener("visibilitychange", recoverGitHubUserAliases);
+    window.addEventListener("pageshow", recoverGitHubUserAliases);
+    window.addEventListener("pagehide", () => {
+      clearTimeout(githubUserAliasState.retryTimer);
+      githubUserAliasState.retryTimer = null;
+      clearTimeout(githubUserHovercardScanTimer);
+      githubUserHovercardScanTimer = null;
+      pendingGitHubHovercards.clear();
+    });
+
+    scheduleGitHubHovercardEnhancement(collectGitHubHovercardContainers(document.body));
   }
 
   async function replaceGitHubUserAliases() {
